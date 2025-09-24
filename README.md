@@ -1,5 +1,7 @@
 # Assignment Problems with Reinforcement Learning
 
+![status](https://img.shields.io/badge/status-WIP-orange)
+
 This repository explores the use of **Reinforcement Learning (RL)** for solving **classical assignment problems**, where the goal is to optimally assign tasks to resources while minimizing overall cost.  
 
 The approach is based on **actor-critic models** with transformer architectures, inspired by recent research works and implementations.  
@@ -25,9 +27,7 @@ Classical assignment problems are usually solved with combinatorial optimization
 
 The reward at each step is defined as:  
 
-\[
-r(i, j) = - \text{cost}_{i, j}
-\]
+r(i, j) = -cost(i,j)
 
 where `i` is the chosen task and `j` is the current resource.  
 
@@ -71,14 +71,10 @@ Key characteristics:
 - **Critic loss:** Measures how well the critic estimates the state value function.  
 - **Average value:** Expected return from a given state under the current policy.  
   - For a uniform random policy, approximated as:  
-    \[
-    -0.5 \times \frac{\text{steps per episode}}{2}
-    \]  
+    -0.5 × (steps per episode) / 2
 - **Average solution cost:** Mean total assignment cost per episode.  
   - For random policies, approximated as:  
-    \[
-    0.5 \times \text{number of tasks per episode}
-    \]  
+     0.5 × (number of tasks per episode)
 - **Policy entropy:** Measures uncertainty in the policy distribution. High entropy indicates difficulty in convergence.  
 
 ---
@@ -117,7 +113,7 @@ From experiments:
 - Leverage **GPU computation** for larger experiments.  
 
 ### Improving Critic Accuracy
-- Use **Generalized Advantage Estimation (GAE, \(G_t(\lambda)\))** to better balance variance and bias.  
+- Use Generalized Advantage Estimation (GAE) to better balance variance and bias.  
 
 ---
 
