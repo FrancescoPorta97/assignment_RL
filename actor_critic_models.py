@@ -122,8 +122,8 @@ class Block(nn.Module):
 
 @dataclass
 class ActorConfig:
-    block_size: int = 127
-    output_size: int = 128
+    block_size: int = 33
+    output_size: int = 32
     resource_token_idx: int = 0
     n_layer: int = 12
     n_head: int = 4
@@ -133,7 +133,7 @@ class ActorConfig:
 
 @dataclass
 class CriticConfig:
-    block_size: int = 127
+    block_size: int = 33
     output_size: int = 1
     resource_token_idx: int = 0
     n_layer: int = 12

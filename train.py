@@ -57,7 +57,7 @@ if __name__ == "__main__":
     capacity = 8
     gamma = 0.99 
     CYCLES = 5000
-    EPISODES = 15  # episodes for training steps
+    EPISODES = 16  # episodes for training steps
     TERMINATING_CONDITION = False
     
     #deep learning initializations
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     LEARNING_RATE_CRITIC = 0.01
     BATCH_SIZE = 32
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    block_size = 127   #+1 rl token 
+    block_size = 33   #+1 rl token 
     actor_model = RlModel(ActorConfig())
     critic_model = RlModel(CriticConfig())
     optimizer_actor = optim.Adam(actor_model.parameters(), lr = LEARNING_RATE_ACTOR)

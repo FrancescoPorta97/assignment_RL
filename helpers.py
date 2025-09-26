@@ -30,7 +30,7 @@ def get_agent_status (tasks_to_mask: list, resource_to_fill: np.array,
     else :
         tokens = cost_task_resource
     
-    return tokens.to(torch.float32), boolean_mask
+    return tokens.to(torch.float32), boolean_mask.view(1, block_size)
 
 def get_assignment_cost(cost_task_resource: np.array, assignment_soultion: dict) -> int:
 
