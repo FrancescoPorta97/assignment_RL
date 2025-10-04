@@ -108,9 +108,9 @@ From experiments:
 ### Addressing High Policy Entropy
 - Reduce input tokens from 128 → 32 (to match actual usage). (DONE 4-10) 
 - Restrict output layer to 32 actions.  (DONE 4-10)
-- Generate cost matrices from **symmetric distributions** instead of uniform to lower variance. 
+- Generate cost matrices from **symmetric distributions** instead of uniform to lower variance. (DONE 4-10)
 - Give a bonus to exploitation to get to a less noisy policy 
-- Leverage **GPU computation** for larger experiments.  
+- Leverage **GPU computation** for larger experiments.  (DONE 4-10)
 
 ### Improving Critic Accuracy
 - Use Generalized Advantage Estimation (GAE) to better balance variance and bias.  

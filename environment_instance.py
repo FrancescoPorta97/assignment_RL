@@ -3,10 +3,11 @@ import numpy as np
 
 class Environment:
 
-    def __init__(self, resource_capacity: int , num_resources: int):
+    def __init__(self, resource_capacity: int , num_resources: int, cost_std_dev: float):
 
         self.num_resources = num_resources  
         self.resource_capacities = [resource_capacity]* num_resources
+        self.cost_std_dev = cost_std_dev
         self.cost_task_resource = self._cost_definition()
         self.tasks_to_mask = []
         self.resource_to_fill = self._init_resource()
@@ -19,7 +20,9 @@ class Environment:
     
     def _cost_definition(self):
         
-        cost_task_resources =np.random.random(size=(self.num_resources, self.get_num_tasks() ))
+        cost_task_resources =np.random.normal(loc=0.5,
+                                                scale=self.cost_std_dev,
+                                                size=(self.num_resources, self.get_num_tasks() ))
         return cost_task_resources
     
     def _init_resource(self):
@@ -49,7 +52,9 @@ class Environment:
             else:
                 new_capacities.append(capacity)
 
-        self.cost_task_resource = np.hstack([self.cost_task_resource, np.random.random(size=(self.num_resources,1))])
+        self.cost_task_resource = np.hstack([self.cost_task_resource, np.random.normal(loc = 0.5,
+                                                                                       scale = self.cost_std_dev,
+                                                                                        size=(self.num_resources,1))])
         self.resource_capacities = new_capacities
     
     def reduce_capacity(self, filled_resources):

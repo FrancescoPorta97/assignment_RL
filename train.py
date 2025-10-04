@@ -16,6 +16,7 @@ import torch.optim as optim
 import random
 import numpy as np
 import wandb
+import math
 import os
 
 def sample_log_prob_action(logits):
@@ -50,18 +51,18 @@ def get_normalized_entropy(logits):
     )
     return entropy / max_entropy
 
-
 if __name__ == "__main__":
 
     # rl initializations
     n_resources = 4
+    cost_std_dev = math.sqrt((1/12))*0.5  #about half of uniform variance
     capacity = 8
     gamma = 0.99
     CYCLES = 5000
     EPISODES = 16  # episodes for training steps
 
     # deep learning initializations
-    LEARNING_RATE_ACTOR = 1e-3
+    LEARNING_RATE_ACTOR = 1e-2
     LEARNING_RATE_CRITIC = 1e-3
     BATCH_SIZE = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -88,6 +89,7 @@ if __name__ == "__main__":
         actor_lr=LEARNING_RATE_ACTOR,
         critic_lr=LEARNING_RATE_CRITIC,
         episodes_per_update=EPISODES,
+        cost_std_dev = cost_std_dev
     )
 
     wandb.init(project="Assignment_RL", config=wandb_config)
@@ -104,7 +106,7 @@ if __name__ == "__main__":
         )
 
         environments = [
-            Environment(resource_capacity=capacity, num_resources=n_resources)
+            Environment(resource_capacity=capacity, num_resources=n_resources, cost_std_dev= cost_std_dev)
             for _ in range(EPISODES)
         ]
         done_flags = [False] * EPISODES
