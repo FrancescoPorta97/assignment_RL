@@ -106,8 +106,8 @@ From experiments:
 ## Potential Improvements
 
 ### Addressing High Policy Entropy
-- Reduce input tokens from 128 → 32 (to match actual usage).  
-- Restrict output layer to 32 actions.  
+- Reduce input tokens from 128 → 32 (to match actual usage). (DONE 4-10) 
+- Restrict output layer to 32 actions.  (DONE 4-10)
 - Generate cost matrices from **symmetric distributions** instead of uniform to lower variance. 
 - Give a bonus to exploitation to get to a less noisy policy 
 - Leverage **GPU computation** for larger experiments.  
@@ -120,7 +120,7 @@ From experiments:
 ## Optimizations
 
 - Merge actor and critic into a **single model with separate heads**.  
-- Use **parallel environments** to speed up experience collection.  
+- Use **parallel environments** to speed up experience collection.  (DONE 4-10)
 
 ---
 
