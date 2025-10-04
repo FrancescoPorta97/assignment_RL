@@ -70,8 +70,11 @@ if __name__ == "__main__":
     critic_model = RlModel(CriticConfig()).to(device)
 
     if torch.cuda.is_available():
+        print("Using GPU...")
         actor_model = torch.compile(actor_model)
         critic_model = torch.compile(critic_model)
+    else:
+        print("Using CPU...")
 
     optimizer_actor = optim.Adam(actor_model.parameters(), lr=LEARNING_RATE_ACTOR)
     optimizer_critic = optim.Adam(critic_model.parameters(), lr=LEARNING_RATE_CRITIC)
