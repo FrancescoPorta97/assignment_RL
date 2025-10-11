@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from losses import gae
 
 def get_agent_status (tasks_to_mask: list, resource_to_fill: np.array,
                        num_tasks: int, cost_task_resource: np.array,
@@ -42,10 +43,31 @@ def get_assignment_cost(cost_task_resource: np.array, assignment_soultion: dict)
     
     return total_cost
 
+def gae_advantages (advantages: list , env_ids: list , gamma, lam):
 
+    gae_advantages = [None] * len(advantages)
+    episode_to_gae_advantages = {}
+    env_iterable = range(len(set(env_ids)))
 
+    for env_idx in env_iterable:
+
+        episode_to_gae_advantages[env_idx] = gae([x for x, mask in zip(advantages, env_ids) if mask == env_idx], gamma, lam)
+    
+    for env_idx in env_iterable:
+
+        i=0
+        for adv_idx in range(len(advantages)):
+
+            if env_ids[adv_idx]== env_idx:
+               gae_advantages[adv_idx] = episode_to_gae_advantages[env_idx][i] 
+               i=i+1
         
 
+    return gae_advantages
+
+def gae_td_targets (advantages: list, values: list):
+
+    return [advantage + value for advantage, value in zip(advantages, values)]
 
 
 

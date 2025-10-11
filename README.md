@@ -113,7 +113,7 @@ From experiments:
 - Leverage **GPU computation** for larger experiments.  (DONE 4-10)
 
 ### Improving Critic Accuracy
-- Use Generalized Advantage Estimation (GAE) to better balance variance and bias.  
+- Use Generalized Advantage Estimation (GAE) to better balance variance and bias. (DONE 11-10)  
 
 ---
 

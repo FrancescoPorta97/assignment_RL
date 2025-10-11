@@ -4,7 +4,13 @@ from actor_critic_models import (
     CriticConfig,
 )
 
-from helpers import get_agent_status, get_assignment_cost
+from helpers import (
+    get_agent_status,
+    get_assignment_cost,
+    gae_advantages,
+    gae_td_targets,
+)
+
 from losses import *
 from environment_instance import Environment
 
@@ -60,10 +66,11 @@ if __name__ == "__main__":
     gamma = 0.99
     CYCLES = 5000
     EPISODES = 16  # episodes for training steps
+    lam = 0.95
 
     # deep learning initializations
     LEARNING_RATE_ACTOR = 1e-2
-    LEARNING_RATE_CRITIC = 1e-3
+    LEARNING_RATE_CRITIC = 3e-3
     BATCH_SIZE = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     block_size = 33  # +1 rl token
@@ -89,7 +96,8 @@ if __name__ == "__main__":
         actor_lr=LEARNING_RATE_ACTOR,
         critic_lr=LEARNING_RATE_CRITIC,
         episodes_per_update=EPISODES,
-        cost_std_dev = cost_std_dev
+        cost_std_dev = cost_std_dev,
+        lam = lam
     )
 
     wandb.init(project="Assignment_RL", config=wandb_config)
@@ -110,6 +118,8 @@ if __name__ == "__main__":
             for _ in range(EPISODES)
         ]
         done_flags = [False] * EPISODES
+        record_id = 0
+        all_records = []
 
         while not all(done_flags):
             agent_inputs = []
@@ -168,6 +178,8 @@ if __name__ == "__main__":
                     "reward": reward,
                     "entropy": float(entropy_values[local_idx].item()),
                     "next_value": torch.zeros_like(value_batch[local_idx]),
+                    "env_idx": env_idx,
+                    "record_id": record_id
                 }
 
                 if len(env.tasks_to_mask) == env.get_num_tasks():
@@ -187,7 +199,8 @@ if __name__ == "__main__":
                     next_inputs.append(agent_input_next)
                     next_masks.append(mask_next)
                     next_record_indices.append(len(records))
-
+                
+                record_id += 1
                 records.append(record)
 
             if next_inputs:
@@ -204,16 +217,24 @@ if __name__ == "__main__":
                 reward_tensor = torch.tensor(
                     record["reward"], dtype=torch.float32, device=device
                 )
-                td_target = compute_td_target(reward_tensor, gamma, record["next_value"])
-                advantage = compute_advantage(td_target, record["value"])
+                record["td_target"] = compute_td_target(reward_tensor, gamma, record["next_value"])
+                record["advantage"] = compute_advantage(record["td_target"], record["value"])
 
                 log_prob_actions.append(record["log_prob"])
-                td_targets.append(td_target)
-                advantages.append(advantage)
                 values.append(record["value"])
                 entropies.append(record["entropy"])
+                all_records.append(record)
 
         N = len(values)
+
+        advantages = gae_advantages([rec["advantage"] for rec in all_records],
+                                    [rec["env_idx"] for rec in all_records],
+                                    gamma,
+                                    lam
+                                    )
+        
+        td_targets = gae_td_targets(advantages, [rec["value"] for rec in all_records])   # gae critic targets
+
         assert len(log_prob_actions) == len(advantages) == len(td_targets) == N
 
         indices = list(range(N))
