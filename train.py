@@ -25,14 +25,16 @@ import wandb
 import math
 import os
 
-def sample_log_prob_action(logits):
-    action_prob = F.softmax(logits, dim=-1)
+def sample_log_prob_action(logits, t):
+
+    action_prob = F.softmax(logits / t, dim=-1)
     dist = distributions.Categorical(action_prob)
     action_idx = dist.sample()
     log_prob_action = dist.log_prob(action_idx)
     return action_idx, log_prob_action
 
 def get_eligible_logits(policy_logits, eligible_actions):
+
     masked_logits = torch.full_like(policy_logits, float("-inf"))
     if isinstance(eligible_actions, (list, tuple)) and eligible_actions and isinstance(
         eligible_actions[0], (list, tuple)
@@ -48,6 +50,7 @@ def get_eligible_logits(policy_logits, eligible_actions):
     return masked_logits
 
 def get_normalized_entropy(logits):
+
     probs = torch.softmax(logits, dim=-1)
     log_probs = torch.log_softmax(logits, dim=-1)
     entropy = -(probs * log_probs).sum(dim=-1)
@@ -56,6 +59,10 @@ def get_normalized_entropy(logits):
         torch.tensor(float(num_actions), device=logits.device, dtype=logits.dtype)
     )
     return entropy / max_entropy
+
+def get_next_temperature(entropy, min_t, max_t):
+
+    return (max_t - min_t)*(1-entropy) + min_t 
 
 if __name__ == "__main__":
 
@@ -67,6 +74,8 @@ if __name__ == "__main__":
     CYCLES = 5000
     EPISODES = 16  # episodes for training steps
     lam = 0.95
+    min_t = 0.5
+    max_t = 1
 
     # deep learning initializations
     LEARNING_RATE_ACTOR = 1e-2
@@ -97,7 +106,8 @@ if __name__ == "__main__":
         critic_lr=LEARNING_RATE_CRITIC,
         episodes_per_update=EPISODES,
         cost_std_dev = cost_std_dev,
-        lam = lam
+        lam = lam,
+        min_temperature = min_t
     )
 
     wandb.init(project="Assignment_RL", config=wandb_config)
@@ -160,7 +170,7 @@ if __name__ == "__main__":
                 policy_logits_batch, eligible_actions_batch
             )
 
-            action_batch, log_prob_batch = sample_log_prob_action(masked_logits_batch)
+            action_batch, log_prob_batch = sample_log_prob_action(masked_logits_batch, t)
 
             records = []
             next_inputs = []
@@ -231,8 +241,7 @@ if __name__ == "__main__":
                                     [rec["env_idx"] for rec in all_records],
                                     gamma,
                                     lam
-                                    )
-        
+                                    )      
         td_targets = gae_td_targets(advantages, [rec["value"] for rec in all_records])   # gae critic targets
 
         assert len(log_prob_actions) == len(advantages) == len(td_targets) == N
@@ -264,6 +273,10 @@ if __name__ == "__main__":
         optimizer_actor.step()
         optimizer_critic.step()
 
+        t = get_next_temperature (entropy = np.array(entropies).mean(),
+                                  min_t = min_t,
+                                    max_t = max_t)
+        
         print(f"The critic loss is {c_loss}")
         print(f"The actor loss is {a_loss}")
         print(
