@@ -245,6 +245,7 @@ if __name__ == "__main__":
 
         print(f"Learning from {EPISODES * (cycle_idx + 1)} episodes of experience in total")
 
+        retain_graph = True
         for start in range(0, N, BATCH_SIZE):
             batch_idx = indices[start : start + BATCH_SIZE]
 
@@ -255,8 +256,10 @@ if __name__ == "__main__":
 
             a_loss = actor_loss(b_logp, b_adv)
             c_loss = critic_loss(b_td, b_val)
-            a_loss.backward()
-            c_loss.backward()
+            if start == N-BATCH_SIZE:
+                retain_graph= False
+            a_loss.backward(retain_graph=retain_graph)
+            c_loss.backward(retain_graph=retain_graph)
 
         optimizer_actor.step()
         optimizer_critic.step()
