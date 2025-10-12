@@ -126,7 +126,7 @@ class ActorConfig:
     output_size: int = 32
     resource_token_idx: int = 0
     n_layer: int = 12
-    n_head: int = 4
+    n_head: int = 1
     n_embd: int = 4
     dropout: float = 0.0
     bias: bool = False # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
@@ -137,7 +137,7 @@ class CriticConfig:
     output_size: int = 1
     resource_token_idx: int = 0
     n_layer: int = 12
-    n_head: int = 4
+    n_head: int = 1
     n_embd: int = 4
     dropout: float = 0.0
     bias: bool = False 
@@ -157,7 +157,10 @@ class RlModel(nn.Module):
         ))
         self.resource_vec = nn.Parameter(torch.zeros(config.n_embd))
         self.rl_token = nn.Parameter(torch.zeros(1, 1, config.n_embd))
-        self.lm_head = nn.Linear(config.n_embd, config.output_size, bias=False)  #to change
+        # Heads: policy scores are produced per token (n_embd->1),
+        # value is predicted from the RL token (n_embd->1)
+        self.policy_head = nn.Linear(config.n_embd, 1, bias=False)
+        self.value_head = nn.Linear(config.n_embd, 1, bias=False)
     
         # init all weights
         self.apply(self._init_weights)
@@ -202,10 +205,19 @@ class RlModel(nn.Module):
             x = block(x, tasks_to_mask)
         x = self.transformer.ln_f(x)
 
-        logits = self.lm_head(x[:, [0], :]) # note: using list [-1] to preserve the time dim
+        # Actor returns per-token logits over the first `output_size` task tokens
+        # (skip RL token at 0 and resource token at 1).
+        if self.config.output_size > 1:
+            start = 2
+            end = 2 + self.config.output_size
+            task_tokens = x[:, start:end, :]                      # [B, output_size, n_embd]
+            logits = self.policy_head(task_tokens).squeeze(-1)    # [B, output_size]
+            loss = None
+            return logits, loss
+        # Critic returns a scalar value from the RL token
+        value = self.value_head(x[:, [0], :])                     # [B, 1, 1]
         loss = None
-
-        return logits, loss
+        return value, loss
     
     def crop_block_size(self, block_size):
         # model surgery to decrease the block size if necessary
