@@ -154,12 +154,11 @@ if __name__ == "__main__":
             value_batch = critic_model(agent_batch, mask_batch)[0].view(-1)
             policy_logits_batch = actor_model(agent_batch, mask_batch)[0].squeeze(1)
 
-            # Compute entropy on masked logits (eligible actions only)
+            entropy_values = get_normalized_entropy(policy_logits_batch).detach().cpu()
             masked_logits_batch = get_eligible_logits(
                 policy_logits_batch, eligible_actions_batch
             )
-            entropy_values = get_normalized_entropy(masked_logits_batch).detach().cpu()
-
+            
             action_batch, log_prob_batch = sample_log_prob_action(masked_logits_batch)
 
             records = []
