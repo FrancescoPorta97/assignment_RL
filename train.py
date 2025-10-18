@@ -48,14 +48,13 @@ def get_eligible_logits(policy_logits, eligible_actions):
     return masked_logits
 
 def get_normalized_entropy(logits):
+    # Works with masked logits (where ineligible actions are -inf)
     probs = torch.softmax(logits, dim=-1)
     log_probs = torch.log_softmax(logits, dim=-1)
     entropy = -(probs * log_probs).sum(dim=-1)
-    num_actions = probs.size(-1)
-    max_entropy = torch.log(
-        torch.tensor(float(num_actions), device=logits.device, dtype=logits.dtype)
-    )
-    return entropy / max_entropy
+    eligible = torch.isfinite(logits).sum(dim=-1).to(logits.dtype)
+    max_entropy = torch.log(torch.clamp(eligible, min=torch.tensor(1.0, device=logits.device, dtype=logits.dtype)))
+    return entropy / (max_entropy + 1e-8)
 
 if __name__ == "__main__":
 
@@ -66,10 +65,10 @@ if __name__ == "__main__":
     gamma = 0.99
     CYCLES = 5000
     EPISODES = 16  # episodes for training steps
-    lam = 0.95
+    lam = 0.9
 
     # deep learning initializations
-    LEARNING_RATE_ACTOR = 1e-2
+    LEARNING_RATE_ACTOR = 1e-3
     LEARNING_RATE_CRITIC = 1e-3
     BATCH_SIZE = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -159,7 +158,7 @@ if __name__ == "__main__":
             masked_logits_batch = get_eligible_logits(
                 policy_logits_batch, eligible_actions_batch
             )
-
+            
             action_batch, log_prob_batch = sample_log_prob_action(masked_logits_batch)
 
             records = []
