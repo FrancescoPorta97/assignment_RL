@@ -130,6 +130,7 @@ class ActorConfig:
     n_embd: int = 4
     dropout: float = 0.0
     bias: bool = False # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    value_bias: float = 0
 
 @dataclass
 class CriticConfig:
@@ -140,7 +141,8 @@ class CriticConfig:
     n_head: int = 1
     n_embd: int = 4
     dropout: float = 0.0
-    bias: bool = False 
+    bias: bool = True
+    value_bias: float = -7.5
 
 class RlModel(nn.Module):
 
@@ -160,10 +162,11 @@ class RlModel(nn.Module):
         # Heads: policy scores are produced per token (n_embd->1),
         # value is predicted from the RL token (n_embd->1)
         self.policy_head = nn.Linear(config.n_embd, 1, bias=False)
-        self.value_head = nn.Linear(config.n_embd, 1, bias=False)
+        self.value_head = nn.Linear(config.n_embd, 1, bias=True)
     
         # init all weights
         self.apply(self._init_weights)
+        nn.init.constant_(self.value_head.bias, config.value_bias)
         # apply special scaled init to the residual projections, per GPT-2 paper
         for pn, p in self.named_parameters():
             if pn.endswith('c_proj.weight'):

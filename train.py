@@ -3,14 +3,12 @@ from actor_critic_models import (
     ActorConfig,
     CriticConfig,
 )
-
 from helpers import (
     get_agent_status,
     get_assignment_cost,
     gae_advantages,
     gae_td_targets,
 )
-
 from losses import *
 from environment_instance import Environment
 
@@ -63,18 +61,24 @@ if __name__ == "__main__":
     cost_std_dev = math.sqrt((1/12))*0.5  #about half of uniform variance
     capacity = 8
     gamma = 0.99
-    CYCLES = 5000
+    MINIMUM_ENTROPY = 0.05
+    mean_entropy = float('inf')
     EPISODES = 16  # episodes for training steps
     lam = 0.9
 
     # deep learning initializations
     LEARNING_RATE_ACTOR = 1e-3
-    LEARNING_RATE_CRITIC = 1e-3
+    LEARNING_RATE_CRITIC = 0.5e-3
     BATCH_SIZE = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     block_size = 33  # +1 rl token
     actor_model = RlModel(ActorConfig()).to(device)
     critic_model = RlModel(CriticConfig()).to(device)
+
+    # dev initializations
+    cycle_idx = 0
+    CURRENT_DIR = os.path.abspath(__file__)
+    models_output_path = os.path.join(CURRENT_DIR, "models")
 
     if torch.cuda.is_available():
         print("Using GPU...")
@@ -101,7 +105,7 @@ if __name__ == "__main__":
 
     wandb.init(project="Assignment_RL", config=wandb_config)
 
-    for cycle_idx in range(CYCLES):
+    while (float(mean_entropy) > MINIMUM_ENTROPY):
 
         log_prob_actions, td_targets, advantages, values, episode_costs, entropies = (
             [],
@@ -262,14 +266,15 @@ if __name__ == "__main__":
 
         optimizer_actor.step()
         optimizer_critic.step()
-
+        
+        mean_entropy = np.array(entropies).mean()
         print(f"The critic loss is {c_loss}")
         print(f"The actor loss is {a_loss}")
         print(
             f"The average value for {EPISODES} is {torch.stack([v.detach() for v in values]).mean().item()}"
         )
         print(
-            f"The average entropy of the policy for {EPISODES} is {np.array(entropies).mean()}"
+            f"The average entropy of the policy for {EPISODES} is {mean_entropy}"
         )
         print(
             f"The average episode cost for {EPISODES} episodes was {np.array(episode_costs).mean()}"
@@ -279,9 +284,17 @@ if __name__ == "__main__":
             {
                 "experience_episodes": EPISODES * (cycle_idx + 1),
                 "avg_solution_cost": np.array(episode_costs).mean(),
-                "avg_entropy": np.array(entropies).mean(),
+                "avg_entropy": mean_entropy,
                 "avg_value": torch.stack([v.detach() for v in values]).mean().item(),
                 "actor_loss": a_loss,
                 "critic_loss": c_loss,
             }
         )
+
+        cycle_idx += 1
+
+    torch.save(actor_model.state_dict(), os.path.join(models_output_path, "actor.pt"))
+    torch.save(critic_model.state_dict(), os.path.join(models_output_path, "critic.pt"))
+
+    print("End of the script")
+    

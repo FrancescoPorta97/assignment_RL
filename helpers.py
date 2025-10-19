@@ -4,7 +4,7 @@ from losses import gae
 
 def get_agent_status (tasks_to_mask: list, resource_to_fill: np.array,
                        num_tasks: int, cost_task_resource: np.array,
-                       block_size: int = 127, slack: int = 1) -> tuple :  #to debug
+                       block_size: int = 127, slack: int = 1) -> tuple : 
 
     token_to_masks_task = [task +slack for task in tasks_to_mask]
     token_to_masks_pad = list(range(num_tasks+slack, block_size))
