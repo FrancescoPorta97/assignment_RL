@@ -22,6 +22,8 @@ import numpy as np
 import wandb
 import math
 import os
+import datetime
+import json
 
 def sample_log_prob_action(logits):
     action_prob = F.softmax(logits, dim=-1)
@@ -54,6 +56,12 @@ def get_normalized_entropy(logits):
     max_entropy = torch.log(torch.clamp(eligible, min=torch.tensor(1.0, device=logits.device, dtype=logits.dtype)))
     return entropy / (max_entropy + 1e-8)
 
+def save_models_and_config(actor_model, critic_model, wandb_config, output_path):
+    torch.save(actor_model.state_dict(), os.path.join(output_path, "actor.pt"))
+    torch.save(critic_model.state_dict(), os.path.join(output_path, "critic.pt"))
+    with open(os.path.join(output_path, "config.json"), 'w') as f:
+        json.dump(wandb_config, f, indent=4)
+
 if __name__ == "__main__":
 
     # rl initializations
@@ -68,7 +76,7 @@ if __name__ == "__main__":
 
     # deep learning initializations
     LEARNING_RATE_ACTOR = 1e-3
-    LEARNING_RATE_CRITIC = 0.5e-3
+    LEARNING_RATE_CRITIC = 1e-3
     BATCH_SIZE = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     block_size = 33  # +1 rl token
@@ -77,8 +85,10 @@ if __name__ == "__main__":
 
     # dev initializations
     cycle_idx = 0
-    CURRENT_DIR = os.path.abspath(__file__)
-    models_output_path = os.path.join(CURRENT_DIR, "models")
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    model_version = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    models_output_path = os.path.join(CURRENT_DIR, "models", model_version)
+    os.makedirs(models_output_path, exist_ok=True)
 
     if torch.cuda.is_available():
         print("Using GPU...")
@@ -291,10 +301,13 @@ if __name__ == "__main__":
             }
         )
 
+        if mean_entropy <= 0.2 and not os.path.exists(os.path.join(models_output_path, "actor.pt")):
+
+            save_models_and_config(actor_model, critic_model, wandb_config, models_output_path)
+            print(f"Models saved at cycle {cycle_idx} with mean entropy {mean_entropy}")
+
         cycle_idx += 1
 
-    torch.save(actor_model.state_dict(), os.path.join(models_output_path, "actor.pt"))
-    torch.save(critic_model.state_dict(), os.path.join(models_output_path, "critic.pt"))
-
+    save_models_and_config(actor_model, critic_model, wandb_config, models_output_path)
     print("End of the script")
     

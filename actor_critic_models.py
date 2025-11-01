@@ -10,8 +10,37 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+
+@dataclass
+class ActorConfig:
+    block_size: int = 33
+    output_size: int = 32
+    resource_token_idx: int = 0
+    n_layer: int = 12
+    n_head: int = 1
+    n_embd: int = 4
+    dropout: float = 0.0
+    bias: bool = (
+        False  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    )
+    value_bias: float = 0
+
+
+@dataclass
+class CriticConfig:
+    block_size: int = 33
+    output_size: int = 1
+    resource_token_idx: int = 0
+    n_layer: int = 12
+    n_head: int = 1
+    n_embd: int = 4
+    dropout: float = 0.0
+    bias: bool = True
+    value_bias: float = -7.5
+
+
 class LayerNorm(nn.Module):
-    """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
+    """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False"""
 
     def __init__(self, ndim, bias):
         super().__init__()
@@ -20,6 +49,7 @@ class LayerNorm(nn.Module):
 
     def forward(self, input):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
+
 
 class SelfAttention(nn.Module):
 
@@ -38,8 +68,8 @@ class SelfAttention(nn.Module):
         self.dropout = config.dropout
         self.block_size = config.block_size
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
-        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-    
+        self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
+
     def _build_mask(self, tasks_to_mask, B, T, device):
         """
         Build a boolean mask for attention of shape [B, 1, T, T].
@@ -54,8 +84,8 @@ class SelfAttention(nn.Module):
 
         if tasks_to_mask.dtype == torch.bool:
             # tasks_to_mask: [B, T]
-            rl_mask = torch.ones(B,1, dtype=torch.bool).to(device)
-            tasks_to_mask = torch.cat([rl_mask, tasks_to_mask],dim=1)
+            rl_mask = torch.ones(B, 1, dtype=torch.bool).to(device)
+            tasks_to_mask = torch.cat([rl_mask, tasks_to_mask], dim=1)
             keep = tasks_to_mask.to(device)
 
             # start with all allowed
@@ -73,30 +103,35 @@ class SelfAttention(nn.Module):
 
     def forward(self, x, tasks_to_mask):
 
-        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
+        B, T, C = x.size()  # batch size, sequence length, embedding dimensionality (n_embd)
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
 
         mask = self._build_mask(tasks_to_mask, B, T, x.device)  # True = masked
-  
-        y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask= mask, dropout_p=self.dropout if self.training else 0, is_causal=False)
-        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
+
+        y = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask, dropout_p=self.dropout if self.training else 0, is_causal=False
+        )
+        y = (
+            y.transpose(1, 2).contiguous().view(B, T, C)
+        )  # re-assemble all head outputs side by side
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))
         return y
 
+
 class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.gelu    = nn.GELU()
-        self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.gelu = nn.GELU()
+        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
@@ -105,6 +140,7 @@ class MLP(nn.Module):
         x = self.c_proj(x)
         x = self.dropout(x)
         return x
+
 
 class Block(nn.Module):
 
@@ -115,34 +151,11 @@ class Block(nn.Module):
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
 
-    def forward(self, x, tasks_to_mask = None):
+    def forward(self, x, tasks_to_mask=None):
         x = x + self.attn(self.ln_1(x), tasks_to_mask)
         x = x + self.mlp(self.ln_2(x))
         return x
 
-@dataclass
-class ActorConfig:
-    block_size: int = 33
-    output_size: int = 32
-    resource_token_idx: int = 0
-    n_layer: int = 12
-    n_head: int = 1
-    n_embd: int = 4
-    dropout: float = 0.0
-    bias: bool = False # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
-    value_bias: float = 0
-
-@dataclass
-class CriticConfig:
-    block_size: int = 33
-    output_size: int = 1
-    resource_token_idx: int = 0
-    n_layer: int = 12
-    n_head: int = 1
-    n_embd: int = 4
-    dropout: float = 0.0
-    bias: bool = True
-    value_bias: float = -7.5
 
 class RlModel(nn.Module):
 
@@ -152,25 +165,27 @@ class RlModel(nn.Module):
         assert config.block_size is not None
         self.config = config
 
-        self.transformer = nn.ModuleDict(dict(
-            drop = nn.Dropout(config.dropout),
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = LayerNorm(config.n_embd, bias=config.bias),
-        ))
+        self.transformer = nn.ModuleDict(
+            dict(
+                drop=nn.Dropout(config.dropout),
+                h=nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+                ln_f=LayerNorm(config.n_embd, bias=config.bias),
+            )
+        )
         self.resource_vec = nn.Parameter(torch.zeros(config.n_embd))
         self.rl_token = nn.Parameter(torch.zeros(1, 1, config.n_embd))
         # Heads: policy scores are produced per token (n_embd->1),
         # value is predicted from the RL token (n_embd->1)
         self.policy_head = nn.Linear(config.n_embd, 1, bias=False)
         self.value_head = nn.Linear(config.n_embd, 1, bias=True)
-    
+
         # init all weights
         self.apply(self._init_weights)
         nn.init.constant_(self.value_head.bias, config.value_bias)
         # apply special scaled init to the residual projections, per GPT-2 paper
         for pn, p in self.named_parameters():
-            if pn.endswith('c_proj.weight'):
-                torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
+            if pn.endswith("c_proj.weight"):
+                torch.nn.init.normal_(p, mean=0.0, std=0.02 / math.sqrt(2 * config.n_layer))
 
         # report number of parameters
         print("number of parameters: %.2f" % (self.get_num_params(),))
@@ -198,7 +213,7 @@ class RlModel(nn.Module):
         # forward the GPT model itself
         idx = self.config.resource_token_idx
         is_special = (torch.arange(t, device=device) == idx).float().view(1, t, 1)  # [1,T,1]
-        x = tasks_emb + is_special* self.resource_vec.to(device) # broadcast [1,1,d]
+        x = tasks_emb + is_special * self.resource_vec.to(device)  # broadcast [1,1,d]
 
         rl = self.rl_token.expand(b, 1, n).to(device)
         x = torch.cat([rl, x], dim=1)
@@ -213,15 +228,15 @@ class RlModel(nn.Module):
         if self.config.output_size > 1:
             start = 2
             end = 2 + self.config.output_size
-            task_tokens = x[:, start:end, :]                      # [B, output_size, n_embd]
-            logits = self.policy_head(task_tokens).squeeze(-1)    # [B, output_size]
+            task_tokens = x[:, start:end, :]  # [B, output_size, n_embd]
+            logits = self.policy_head(task_tokens).squeeze(-1)  # [B, output_size]
             loss = None
             return logits, loss
         # Critic returns a scalar value from the RL token
-        value = self.value_head(x[:, [0], :])                     # [B, 1, 1]
+        value = self.value_head(x[:, [0], :])  # [B, 1, 1]
         loss = None
         return value, loss
-    
+
     def crop_block_size(self, block_size):
         # model surgery to decrease the block size if necessary
         # e.g. we may load the GPT2 pretrained model checkpoint (block size 1024)
@@ -230,8 +245,8 @@ class RlModel(nn.Module):
         self.config.block_size = block_size
         self.transformer.wpe.weight = nn.Parameter(self.transformer.wpe.weight[:block_size])
         for block in self.transformer.h:
-            if hasattr(block.attn, 'bias'):
-                block.attn.bias = block.attn.bias[:,:,:block_size,:block_size]
+            if hasattr(block.attn, "bias"):
+                block.attn.bias = block.attn.bias[:, :, :block_size, :block_size]
 
     def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
         # start with all of the candidate parameters
@@ -243,16 +258,20 @@ class RlModel(nn.Module):
         decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
         nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
         optim_groups = [
-            {'params': decay_params, 'weight_decay': weight_decay},
-            {'params': nodecay_params, 'weight_decay': 0.0}
+            {"params": decay_params, "weight_decay": weight_decay},
+            {"params": nodecay_params, "weight_decay": 0.0},
         ]
         num_decay_params = sum(p.numel() for p in decay_params)
         num_nodecay_params = sum(p.numel() for p in nodecay_params)
-        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
-        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        print(
+            f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters"
+        )
+        print(
+            f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters"
+        )
         # Create AdamW optimizer and use the fused version if it is available
-        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
-        use_fused = fused_available and device_type == 'cuda'
+        fused_available = "fused" in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == "cuda"
         extra_args = dict(fused=True) if use_fused else dict()
         optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
         print(f"using fused AdamW: {use_fused}")
@@ -260,22 +279,17 @@ class RlModel(nn.Module):
         return optimizer
 
     def estimate_mfu(self, fwdbwd_per_iter, dt):
-        """ estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS """
+        """estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS"""
         # first estimate the number of flops we do per iteration.
         # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
         N = self.get_num_params()
         cfg = self.config
-        L, H, Q, T = cfg.n_layer, cfg.n_head, cfg.n_embd//cfg.n_head, cfg.block_size
-        flops_per_token = 6*N + 12*L*H*Q*T
+        L, H, Q, T = cfg.n_layer, cfg.n_head, cfg.n_embd // cfg.n_head, cfg.block_size
+        flops_per_token = 6 * N + 12 * L * H * Q * T
         flops_per_fwdbwd = flops_per_token * T
         flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
         # express our flops throughput as ratio of A100 bfloat16 peak flops
-        flops_achieved = flops_per_iter * (1.0/dt) # per second
-        flops_promised = 312e12 # A100 GPU bfloat16 peak flops is 312 TFLOPS
+        flops_achieved = flops_per_iter * (1.0 / dt)  # per second
+        flops_promised = 312e12  # A100 GPU bfloat16 peak flops is 312 TFLOPS
         mfu = flops_achieved / flops_promised
         return mfu
-
-
-
-    
-
