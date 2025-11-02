@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
     # deep learning initializations
     LEARNING_RATE_ACTOR = 1e-3
-    LEARNING_RATE_CRITIC = 1e-3
+    LEARNING_RATE_CRITIC = 1e-4
     BATCH_SIZE = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     block_size = 33  # +1 rl token
@@ -92,8 +92,6 @@ if __name__ == "__main__":
 
     if torch.cuda.is_available():
         print("Using GPU...")
-        actor_model = torch.compile(actor_model)
-        critic_model = torch.compile(critic_model)
     else:
         print("Using CPU...")
 
@@ -153,6 +151,7 @@ if __name__ == "__main__":
                     num_tasks=env.get_num_tasks(),
                     cost_task_resource=env.cost_task_resource,
                     block_size=block_size,
+                    device=device,
                 )
                 agent_inputs.append(agent_input)
                 masks.append(mask)
@@ -162,18 +161,19 @@ if __name__ == "__main__":
             if not env_indices:
                 break
 
-            agent_batch = torch.cat(agent_inputs, dim=0).to(device)
-            mask_batch = torch.cat(masks, dim=0).to(device)
+            agent_batch = torch.cat(agent_inputs, dim=0)
+            mask_batch = torch.cat(masks, dim=0)
 
             value_batch = critic_model(agent_batch, mask_batch)[0].view(-1)
             policy_logits_batch = actor_model(agent_batch, mask_batch)[0].squeeze(1)
 
-            entropy_values = get_normalized_entropy(policy_logits_batch).detach().cpu()
+            entropy_values = get_normalized_entropy(policy_logits_batch).detach()
             masked_logits_batch = get_eligible_logits(
                 policy_logits_batch, eligible_actions_batch
             )
             
             action_batch, log_prob_batch = sample_log_prob_action(masked_logits_batch)
+            actions = action_batch.detach().cpu().tolist()
 
             records = []
             next_inputs = []
@@ -182,14 +182,14 @@ if __name__ == "__main__":
 
             for local_idx, env_idx in enumerate(env_indices):
                 env = environments[env_idx]
-                action = int(action_batch[local_idx].item())
+                action = int(actions[local_idx])
                 reward = env.take_action(action)
 
                 record = {
                     "value": value_batch[local_idx],
                     "log_prob": log_prob_batch[local_idx],
                     "reward": reward,
-                    "entropy": float(entropy_values[local_idx].item()),
+                    "entropy": entropy_values[local_idx],
                     "next_value": torch.zeros_like(value_batch[local_idx]),
                     "env_idx": env_idx,
                     "record_id": record_id
@@ -208,6 +208,7 @@ if __name__ == "__main__":
                         num_tasks=env.get_num_tasks(),
                         cost_task_resource=env.cost_task_resource,
                         block_size=block_size,
+                        device=device,
                     )
                     next_inputs.append(agent_input_next)
                     next_masks.append(mask_next)
@@ -217,11 +218,12 @@ if __name__ == "__main__":
                 records.append(record)
 
             if next_inputs:
-                next_batch_input = torch.cat(next_inputs, dim=0).to(device)
-                next_batch_mask = torch.cat(next_masks, dim=0).to(device)
-                next_value_batch = (
-                    critic_model(next_batch_input, next_batch_mask)[0].view(-1)
-                )
+                next_batch_input = torch.cat(next_inputs, dim=0)
+                next_batch_mask = torch.cat(next_masks, dim=0)
+                with torch.no_grad():
+                    next_value_batch = (
+                        critic_model(next_batch_input, next_batch_mask)[0].view(-1)
+                    )
 
                 for idx, record_idx in enumerate(next_record_indices):
                     records[record_idx]["next_value"] = next_value_batch[idx]
@@ -235,6 +237,7 @@ if __name__ == "__main__":
 
                 log_prob_actions.append(record["log_prob"])
                 values.append(record["value"])
+                # accumulate entropy on device; convert once at the end
                 entropies.append(record["entropy"])
                 all_records.append(record)
 
@@ -277,7 +280,7 @@ if __name__ == "__main__":
         optimizer_actor.step()
         optimizer_critic.step()
         
-        mean_entropy = np.array(entropies).mean()
+        mean_entropy = torch.stack([e.detach() if torch.is_tensor(e) else torch.tensor(e, device=device) for e in entropies]).mean().item()
         print(f"The critic loss is {c_loss}")
         print(f"The actor loss is {a_loss}")
         print(

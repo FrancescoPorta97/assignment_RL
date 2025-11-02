@@ -10,15 +10,16 @@ def get_agent_status(
     cost_task_resource: np.array,
     block_size: int = 127,
     slack: int = 1,
+    device=None,
 ) -> tuple:
 
     token_to_masks_task = [task + slack for task in tasks_to_mask]
     token_to_masks_pad = list(range(num_tasks + slack, block_size))
     token_to_masks = token_to_masks_task + token_to_masks_pad
 
-    boolean_mask = torch.ones(block_size, dtype=torch.bool)
+    boolean_mask = torch.ones(block_size, dtype=torch.bool, device=device)
     if token_to_masks:  # guard against empty
-        idx = torch.as_tensor(token_to_masks, dtype=torch.long)
+        idx = torch.as_tensor(token_to_masks, dtype=torch.long, device=device)
         idx = idx[(idx >= 0) & (idx < block_size)]  # safety clamp
         boolean_mask[idx] = False
         boolean_mask = boolean_mask.view(1, block_size)
@@ -26,7 +27,7 @@ def get_agent_status(
     cost_task_resource = np.hstack(
         [resource_to_fill.reshape(resource_to_fill.size, 1), cost_task_resource]
     )
-    cost_task_resource = torch.tensor(cost_task_resource)
+    cost_task_resource = torch.tensor(cost_task_resource, device=device)
     dim_1 = cost_task_resource.size()[0]
     dim_2 = cost_task_resource.size()[1]
     cost_task_resource = torch.transpose(cost_task_resource, 1, 0)
@@ -34,7 +35,7 @@ def get_agent_status(
     rows_to_add = block_size - dim_2
 
     if rows_to_add > 0:
-        zeros = torch.zeros((1, rows_to_add, dim_1), dtype=cost_task_resource.dtype)
+        zeros = torch.zeros((1, rows_to_add, dim_1), dtype=cost_task_resource.dtype, device=device)
         tokens = torch.cat([cost_task_resource, zeros], dim=1)
     else:
         tokens = cost_task_resource
