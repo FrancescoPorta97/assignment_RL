@@ -83,3 +83,18 @@ def gae_advantages(advantages: list, env_ids: list, gamma, lam):
 def gae_td_targets(advantages: list, values: list):
 
     return [advantage + value for advantage, value in zip(advantages, values)]
+
+def get_eligible_logits(policy_logits, eligible_actions):
+    masked_logits = torch.full_like(policy_logits, float("-inf"))
+    if isinstance(eligible_actions, (list, tuple)) and eligible_actions and isinstance(
+        eligible_actions[0], (list, tuple)
+    ):
+        for idx, actions in enumerate(eligible_actions):
+            if len(actions) == 0:
+                continue
+            masked_logits[idx, actions] = policy_logits[idx, actions]
+    else:
+        if isinstance(eligible_actions, (list, tuple)) and len(eligible_actions) == 0:
+            return masked_logits
+        masked_logits[..., eligible_actions] = policy_logits[..., eligible_actions]
+    return masked_logits

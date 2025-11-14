@@ -2,6 +2,14 @@ from scipy.optimize import linear_sum_assignment
 from environment_instance import Environment
 import math
 import numpy as np
+import os
+from actor_critic_models import RlModel, ActorConfig
+from helpers import (
+    get_agent_status,
+    get_eligible_logits,
+    get_assignment_cost
+)
+import torch
 
 
 def get_optimal_solution_cost(capacity, cost_matrix):
@@ -55,13 +63,52 @@ def get_greedy_solution_cost(capacity: int, cost_matrix: np.ndarray) -> float:
 
 if __name__ == "__main__":
 
+    #dev initializations
+    model_version = "20251105_135350"
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    model_folder = os.path.join(CURRENT_DIR,"models", model_version)
+    NUM_RUNS = 1000
+
+    #ml initializations
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    block_size = 33  # +1 rl token
+
+    #rl initializations
     capacity = 8
     n_resources = 4
     cost_std_dev = math.sqrt((1 / 12)) * 0.5
-    environment = Environment(
-        resource_capacity=capacity, num_resources=n_resources, cost_std_dev=cost_std_dev
-    )
-    cost_opt = get_optimal_solution_cost(capacity, environment.cost_task_resource)
-    cost_greedy = get_greedy_solution_cost(capacity, environment.cost_task_resource)
-    print(cost_opt)
-    print(cost_greedy)
+    actor_model = RlModel(ActorConfig()).to(device)
+    actor_model.load_state_dict(torch.load(os.path.join(model_folder, "actor.pt"), map_location=device))
+
+    for run_idx in range(NUM_RUNS):
+        
+        environment = Environment(
+            resource_capacity=capacity, num_resources=n_resources, cost_std_dev=cost_std_dev
+        )
+
+        #get rl solution cost
+        for task in range(environment.get_num_tasks()):
+
+            if not environment.is_resource_available():
+                environment.update_resource()
+
+            eligible_actions = environment.get_eligible_tasks()
+            agent_input, mask = get_agent_status(
+                        tasks_to_mask=environment.tasks_to_mask,
+                        resource_to_fill=environment.resource_to_fill,
+                        num_tasks=environment.get_num_tasks(),
+                        cost_task_resource=environment.cost_task_resource,
+                        block_size=block_size,
+                        device=device,
+                    )
+            with torch.no_grad():
+                policy_logits = actor_model(agent_input, mask)[0].squeeze(1)
+            masked_logits = get_eligible_logits(policy_logits, eligible_actions)
+            action = int(masked_logits.argmax(dim=-1))
+            environment.take_action(action)
+        
+        cost_rl = get_assignment_cost(environment.cost_task_resource,
+                                    environment.assignment_solution)
+        cost_opt = get_optimal_solution_cost(capacity, environment.cost_task_resource)
+        cost_greedy = get_greedy_solution_cost(capacity, environment.cost_task_resource)
+        print("Run idx:", run_idx)

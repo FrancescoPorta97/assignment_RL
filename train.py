@@ -8,6 +8,7 @@ from helpers import (
     get_assignment_cost,
     gae_advantages,
     gae_td_targets,
+    get_eligible_logits
 )
 from losses import *
 from environment_instance import Environment
@@ -31,21 +32,6 @@ def sample_log_prob_action(logits):
     action_idx = dist.sample()
     log_prob_action = dist.log_prob(action_idx)
     return action_idx, log_prob_action
-
-def get_eligible_logits(policy_logits, eligible_actions):
-    masked_logits = torch.full_like(policy_logits, float("-inf"))
-    if isinstance(eligible_actions, (list, tuple)) and eligible_actions and isinstance(
-        eligible_actions[0], (list, tuple)
-    ):
-        for idx, actions in enumerate(eligible_actions):
-            if len(actions) == 0:
-                continue
-            masked_logits[idx, actions] = policy_logits[idx, actions]
-    else:
-        if isinstance(eligible_actions, (list, tuple)) and len(eligible_actions) == 0:
-            return masked_logits
-        masked_logits[..., eligible_actions] = policy_logits[..., eligible_actions]
-    return masked_logits
 
 def get_normalized_entropy(logits):
     # Works with masked logits (where ineligible actions are -inf)
@@ -75,7 +61,7 @@ if __name__ == "__main__":
     lam = 0.9
 
     # deep learning initializations
-    LEARNING_RATE_ACTOR = 1e-3
+    LEARNING_RATE_ACTOR = 1e-4
     LEARNING_RATE_CRITIC = 1e-4
     BATCH_SIZE = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
