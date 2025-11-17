@@ -61,7 +61,7 @@ if __name__ == "__main__":
     lam = 0.9
 
     # deep learning initializations
-    LEARNING_RATE_ACTOR = 0.2e-3
+    LEARNING_RATE_ACTOR = 1e-4
     LEARNING_RATE_CRITIC = 1e-4
     BATCH_SIZE = 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
